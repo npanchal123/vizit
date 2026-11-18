@@ -1,7 +1,8 @@
 import type { User } from '@supabase/supabase-js';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { LOCALES, useI18n, type Locale } from '../i18n';
 import type { SyncState } from '../lib/account';
+import { createBackup, NotABackupError, parseBackup, restoreBackup, saveBackup } from '../lib/backup';
 import { applyAnalyses, deleteAllEntries } from '../lib/entries';
 import { needsRescore, rescore } from '../lib/rescore';
 import { downloadBlob, entriesToCsv, entriesToJson } from '../lib/export';
@@ -55,6 +56,41 @@ export default function Settings(props: Props) {
     const updates = rescore(entries, locale);
     await applyAnalyses(updates);
     setRescoreStatus(updates.length ? t.settings.rescoreDone(updates.length) : t.settings.rescoreNone);
+  }
+
+  const restoreInput = useRef<HTMLInputElement>(null);
+  const [backupBusy, setBackupBusy] = useState<'backup' | 'restore' | null>(null);
+  const [backupStatus, setBackupStatus] = useState('');
+
+  async function handleBackup() {
+    setBackupBusy('backup');
+    setBackupStatus('');
+    try {
+      await saveBackup(await createBackup());
+      setBackupStatus(t.settings.backupDone);
+    } catch (err) {
+      setBackupStatus(t.settings.backupFailed((err as Error).message));
+    } finally {
+      setBackupBusy(null);
+    }
+  }
+
+  async function handleRestore(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBackupStatus('');
+    try {
+      const backup = parseBackup(await file.text());
+      if (!window.confirm(t.settings.restoreConfirm)) return;
+      setBackupBusy('restore');
+      await restoreBackup(backup);
+      // Every screen reads from what was just replaced, so start afresh.
+      window.location.reload();
+    } catch (err) {
+      setBackupBusy(null);
+      setBackupStatus(err instanceof NotABackupError ? t.settings.restoreNotBackup : t.settings.restoreFailed((err as Error).message));
+    }
   }
 
   async function handleDeleteAll() {
@@ -251,6 +287,37 @@ export default function Settings(props: Props) {
         <h2 id="data-heading" className="text-xl font-semibold">
           {t.settings.dataHeading}
         </h2>
+        <div className="tint tint-3 flex flex-col gap-3 rounded-2xl border p-4">
+          <h3 className="font-bold">
+            <span aria-hidden="true">📦 </span>
+            {t.settings.backupTitle}
+          </h3>
+          <p className="text-sm">{t.settings.backupHint}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void handleBackup()} disabled={backupBusy != null} className={btnPrimary}>
+              {backupBusy === 'backup' ? t.settings.backupSaving : t.settings.backupButton}
+            </button>
+            <button
+              type="button"
+              onClick={() => restoreInput.current?.click()}
+              disabled={backupBusy != null}
+              className={btnSecondary}
+            >
+              {backupBusy === 'restore' ? t.settings.restoring : t.settings.restoreButton}
+            </button>
+            <input
+              ref={restoreInput}
+              type="file"
+              accept="application/json,.json"
+              onChange={(e) => void handleRestore(e)}
+              className="hidden"
+              aria-label={t.settings.restoreButton}
+            />
+          </div>
+          <p role="status" className="min-h-5 text-sm">
+            {backupStatus}
+          </p>
+        </div>
         <label className="flex min-h-11 items-center gap-3">
           <input
             type="checkbox"

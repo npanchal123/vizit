@@ -1,16 +1,36 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Where the app is served from. GitHub Pages serves it under /<repo>/, so the deploy workflow sets BASE_PATH.
-const base = process.env.BASE_PATH ?? '/';
+// The site's public address. The deploy workflow sets SITE_URL: the repository variable when there's a custom domain,
+// otherwise GitHub Pages' https://<owner>.github.io/<repo>/. The app is served from its path; local builds from /.
+const siteUrl = process.env.SITE_URL ?? 'https://npanchal123.github.io/vizit/';
+const base = process.env.SITE_URL ? new URL(process.env.SITE_URL).pathname : (process.env.BASE_PATH ?? '/');
+
+/** Fills the full address into the link-preview tags, and writes robots.txt and sitemap.xml for search engines. */
+function siteMeta(): Plugin {
+  return {
+    name: 'vizit-site-meta',
+    transformIndexHtml: (html) => html.replaceAll('__SITE_URL__', siteUrl),
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'robots.txt', source: `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}sitemap.xml\n` });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'sitemap.xml',
+        source: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${siteUrl}</loc></url>\n</urlset>\n`,
+      });
+    },
+  };
+}
 
 export default defineConfig({
   base,
   plugins: [
     react(),
     tailwindcss(),
+    siteMeta(),
     // Installable, offline-capable app. Everything a user needs is on the device,
     // so the service worker precaches the whole app shell.
     VitePWA({
@@ -33,6 +53,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // Only for link previews and backups, so not downloaded up front.
+        globIgnores: ['**/og-image.*', '**/dexie-export-import-*.js'],
         navigateFallback: `${base}index.html`,
         // The AI endpoint must always hit the network (and fail cleanly when offline).
         navigateFallbackDenylist: [/^\/api\//],

@@ -230,8 +230,13 @@ Locally, Playwright uses your installed Chrome. CI installs Chromium itself.
 ### Hosting (GitHub Pages)
 
 Every push to `main` that passes CI is published to `https://<user>.github.io/<repo>/` by the `deploy` job
-in `ci.yml`. It builds with `BASE_PATH=/<repo>/`, so all URLs, the manifest and the service worker live
-under that folder.
+in `ci.yml`. It builds with `SITE_URL=https://<user>.github.io/<repo>/`, so all URLs, the manifest and the
+service worker live under that folder. `SITE_URL` also fills in the link-preview tags (`public/og-image.jpg`) and
+writes `robots.txt` and `sitemap.xml`.
+- **Custom domain:** set the repository variable `SITE_URL` (for example `https://getvizit.com/`), add the domain
+  under **Settings → Pages → Custom domain**, and point its DNS at GitHub Pages. GitHub then redirects the old
+  address to the new one. A browser keeps each address's data apart, so people move their things with
+  **Settings → Your data → Save a backup file**, then **Restore from a backup…** on the new address.
 - **One-time setup:** in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
 - **Smarter analysis** needs the Node server, which Pages can't run, so the hosted app always uses the word
   list.
